@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="TradeQuote">
+    <title>TradeQuote</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">TradeQuote</p>
+          <h1>Automated quote builder</h1>
+        </div>
+        <button class="icon-button" id="installButton" type="button" title="Install app" hidden>
+          <span aria-hidden="true">Install</span>
+          <span class="sr-only">Install app</span>
+        </button>
+      </header>
+
+      <section class="quote-grid">
+        <form class="panel intake" id="quoteForm">
+          <div class="section-heading">
+            <h2>Job details</h2>
+            <p>Capture the client request, photos, voice notes, and pricing in one quote.</p>
+          </div>
+
+          <div class="field-pair">
+            <label>
+              Client name
+              <input id="clientName" name="clientName" autocomplete="name" placeholder="e.g. Sarah Mitchell">
+            </label>
+            <label>
+              Phone
+              <input id="clientPhone" name="clientPhone" inputmode="tel" autocomplete="tel" placeholder="0400 000 000">
+            </label>
+          </div>
+
+          <label>
+            Site address
+            <input id="siteAddress" name="siteAddress" autocomplete="street-address" placeholder="12 Example St, Sydney NSW">
+          </label>
+
+          <div class="field-pair">
+            <label>
+              Trade
+              <select id="tradeType" name="tradeType">
+                <option>Plumbing</option>
+                <option>Electrical</option>
+                <option>Carpentry</option>
+                <option>Landscaping</option>
+                <option>Painting</option>
+                <option>Roofing</option>
+                <option>General maintenance</option>
+              </select>
+            </label>
+            <label>
+              Urgency
+              <select id="urgency" name="urgency">
+                <option>Standard</option>
+                <option>Urgent</option>
+                <option>After hours</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Client request
+            <textarea id="jobDescription" name="jobDescription" rows="5" placeholder="Describe the issue, required work, access notes, preferred timing..."></textarea>
+          </label>
+
+          <div class="media-row">
+            <label class="upload-card">
+              <input id="photoInput" type="file" accept="image/*" capture="environment" multiple>
+              <span class="media-icon">+</span>
+              <strong>Add photos</strong>
+              <small>Use camera or gallery</small>
+            </label>
+            <div class="voice-card">
+              <button id="voiceButton" class="voice-button" type="button">
+                <span aria-hidden="true">Rec</span>
+                <span id="voiceButtonText">Record voice note</span>
+              </button>
+              <p id="voiceStatus">Speech-to-text works where supported by the phone browser.</p>
+            </div>
+          </div>
+
+          <div id="photoPreview" class="photo-preview" aria-live="polite"></div>
+
+          <div class="section-heading compact">
+            <h2>Quote items</h2>
+            <button id="addLineItem" class="secondary-button" type="button">Add item</button>
+          </div>
+
+          <div id="lineItems" class="line-items"></div>
+
+          <label>
+            Terms and notes
+            <textarea id="terms" rows="4">Quote valid for 14 days. Price includes standard labour and materials listed above. Variations, hidden damage, or additional work will be quoted before proceeding.</textarea>
+          </label>
+        </form>
+
+        <aside class="panel quote-preview" aria-live="polite">
+          <div class="preview-header">
+            <div>
+              <p class="eyebrow">Live quote</p>
+              <h2 id="quoteNumber">QT-0001</h2>
+            </div>
+            <span id="quoteStatus">Draft</span>
+          </div>
+
+          <div class="client-card">
+            <strong id="previewClient">Client not set</strong>
+            <span id="previewAddress">Site address pending</span>
+            <span id="previewTrade">Plumbing - Standard</span>
+          </div>
+
+          <div class="ai-assist">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">RAG assistant</p>
+                <h2>AI quote check</h2>
+              </div>
+              <button id="aiAssistButton" class="primary-button" type="button">Run AI</button>
+            </div>
+            <p class="assist-note">Retrieves trade guidance, checks missing details, and drafts LLM-ready quote advice.</p>
+            <div id="retrievedContext" class="context-list"></div>
+            <div class="actions">
+              <button id="applySuggestionsButton" class="secondary-button" type="button">Apply suggested items</button>
+              <button id="copyPromptButton" class="secondary-button" type="button">Copy AI prompt</button>
+            </div>
+            <textarea id="aiOutput" class="ai-output" rows="12" readonly placeholder="AI recommendations will appear here."></textarea>
+          </div>
+
+          <div class="summary-block">
+            <h3>Scope</h3>
+            <p id="previewScope">Add the client request to generate a clearer quote scope.</p>
+          </div>
+
+          <div class="summary-block">
+            <h3>Voice note</h3>
+            <p id="previewVoice">No voice note captured yet.</p>
+          </div>
+
+          <div class="totals">
+            <div><span>Labour</span><strong id="labourTotal">$0.00</strong></div>
+            <div><span>Materials</span><strong id="materialsTotal">$0.00</strong></div>
+            <div><span>Other</span><strong id="otherTotal">$0.00</strong></div>
+            <div><span>GST</span><strong id="gstTotal">$0.00</strong></div>
+            <div class="grand-total"><span>Total</span><strong id="grandTotal">$0.00</strong></div>
+          </div>
+
+          <div class="actions">
+            <button id="generateButton" class="primary-button" type="button">Generate quote text</button>
+            <button id="copyButton" class="secondary-button" type="button">Copy quote</button>
+          </div>
+
+          <textarea id="generatedQuote" class="generated-output" rows="10" readonly placeholder="Generated quote will appear here."></textarea>
+        </aside>
+      </section>
+    </main>
+
+    <script src="knowledge-base.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
