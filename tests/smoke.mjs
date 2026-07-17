@@ -57,6 +57,7 @@ await expectStatus("Agent tasks API blocks unauthenticated writes", "/api/agent-
 await expectStatus("Agent task status API blocks unauthenticated writes", "/api/agent-tasks/status", 401, jsonPost);
 await expectStatus("Hermes assignment API blocks unauthenticated writes", "/api/hermes/assign", 401, jsonPost);
 await expectStatus("AI API blocks unauthenticated use", "/api/ai-assist", 401, jsonPost);
+await expectStatus("Feedback API blocks unauthenticated writes", "/api/feedback", 401, jsonPost);
 
 await expectStatus("Photo API blocks unauthenticated uploads", "/api/media/job-photos", 401, {
   method: "POST",

@@ -418,6 +418,7 @@ textarea:focus {
 .history-panel,
 .task-panel,
 .billing-panel,
+.feedback-panel,
 .data-panel,
 .auth-panel {
   border: 1px solid var(--line);
@@ -433,7 +434,8 @@ textarea:focus {
 
 .data-panel,
 .auth-panel,
-.billing-panel {
+.billing-panel,
+.feedback-panel {
   display: grid;
   gap: 12px;
 }

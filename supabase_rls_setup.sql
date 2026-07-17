@@ -89,6 +89,7 @@ alter table public.quotes enable row level security;
 alter table public.quote_items enable row level security;
 alter table public.job_photos enable row level security;
 alter table public.job_voice_notes enable row level security;
+alter table if exists public.pilot_feedback enable row level security;
 
 drop policy if exists "Business members can view businesses" on public.businesses;
 drop policy if exists "Authenticated users can create owned businesses" on public.businesses;
@@ -365,3 +366,38 @@ using (
   bucket_id in ('job_photos', 'job_voice_notes')
   and public.can_access_storage_business_path(name)
 );
+
+create table if not exists public.pilot_feedback (
+  pilot_feedback_id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses(business_id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  job_id uuid references public.jobs(job_id) on delete set null,
+  quote_id uuid references public.quotes(quote_id) on delete set null,
+  rating text not null default 'ok' check (rating in ('blocked', 'hard', 'ok', 'good')),
+  message text not null,
+  page_path text,
+  user_agent text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.pilot_feedback enable row level security;
+
+drop policy if exists "Business members can select pilot feedback" on public.pilot_feedback;
+drop policy if exists "Business members can insert pilot feedback" on public.pilot_feedback;
+drop policy if exists "Business owners can delete pilot feedback" on public.pilot_feedback;
+
+create policy "Business members can select pilot feedback"
+on public.pilot_feedback for select to authenticated
+using (public.is_business_member(business_id));
+
+create policy "Business members can insert pilot feedback"
+on public.pilot_feedback for insert to authenticated
+with check (
+  public.is_business_member(business_id)
+  and user_id = (select auth.uid())
+);
+
+create policy "Business owners can delete pilot feedback"
+on public.pilot_feedback for delete to authenticated
+using (public.is_business_owner(business_id));

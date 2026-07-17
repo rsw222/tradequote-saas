@@ -348,6 +348,9 @@ export default function QuoteBuilderPage() {
   const [taskDraftType, setTaskDraftType] = useState("confirm_measurements");
   const [taskDraftPriority, setTaskDraftPriority] = useState("normal");
   const [hermesStatus, setHermesStatus] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState("ok");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackStatus, setFeedbackStatus] = useState("");
   const recognitionRef = useRef(null);
   const [quoteNumber, setQuoteNumber] = useState("QT-0001");
   const mediaRecorderRef = useRef(null);
@@ -1463,6 +1466,39 @@ export default function QuoteBuilderPage() {
     }
   }
 
+  async function sendPilotFeedback() {
+    if (!activeBusiness?.id) {
+      setFeedbackStatus("Select a business before sending feedback.");
+      return;
+    }
+
+    if (!feedbackMessage.trim()) {
+      setFeedbackStatus("Add a note before sending feedback.");
+      return;
+    }
+
+    setFeedbackStatus("Sending feedback...");
+
+    try {
+      await postJsonApi("/api/feedback", {
+        business_id: activeBusiness.id,
+        job_id: currentJobId,
+        quote_id: currentQuoteId,
+        rating: feedbackRating,
+        message: feedbackMessage,
+        page_path: window.location.pathname,
+        user_agent: navigator.userAgent,
+        client_name: clientName,
+        trade_type: tradeType,
+        quote_number: quoteNumber,
+      });
+      setFeedbackMessage("");
+      setFeedbackStatus("Feedback sent. Thank you.");
+    } catch (error) {
+      setFeedbackStatus(error.message);
+    }
+  }
+
   async function createSignedPhotoUrls(photoRecords) {
     if (!photoRecords.length) return [];
 
@@ -2024,6 +2060,42 @@ export default function QuoteBuilderPage() {
                 })}
               </div>
             ) : null}
+          </div>
+
+          <div className="feedback-panel">
+            <div className="section-heading compact">
+              <div>
+                <p className="eyebrow">Pilot feedback</p>
+                <h2>Tester notes</h2>
+              </div>
+            </div>
+            <label>
+              How did this step feel?
+              <select value={feedbackRating} onChange={(event) => setFeedbackRating(event.target.value)}>
+                <option value="blocked">Blocked</option>
+                <option value="hard">Hard to use</option>
+                <option value="ok">OK</option>
+                <option value="good">Good</option>
+              </select>
+            </label>
+            <label>
+              Note
+              <textarea
+                value={feedbackMessage}
+                onChange={(event) => setFeedbackMessage(event.target.value)}
+                rows={3}
+                placeholder="What happened, what was confusing, or what should be improved?"
+              />
+            </label>
+            <div className="actions">
+              <button className="primary-button" type="button" onClick={sendPilotFeedback}>
+                Send feedback
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setFeedbackMessage("")}>
+                Clear
+              </button>
+            </div>
+            <span className="status-text">{feedbackStatus || "Feedback is saved against the selected business."}</span>
           </div>
 
           <div className="data-panel">
