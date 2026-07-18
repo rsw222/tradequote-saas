@@ -304,6 +304,25 @@ function getTemplateDescriptionsForOtherTrades(nextTrade) {
   );
 }
 
+function calculatePaintingMeasurements(measurements) {
+  const width = Number(measurements.width || 0);
+  const height = Number(measurements.height || 0);
+  const surfaceCount = Math.max(1, Number(measurements.surfaceCount || 1));
+  const openingsArea = Math.max(0, Number(measurements.openingsArea || 0));
+  const coats = Math.max(1, Number(measurements.coats || 1));
+  const coverage = Math.max(1, Number(measurements.coverage || 10));
+  const labourRate = Math.max(0, Number(measurements.labourRate || 18));
+  const paintPrice = Math.max(0, Number(measurements.paintPrice || 24));
+  const grossArea = width * height * surfaceCount;
+  const paintableArea = Math.max(0, grossArea - openingsArea);
+  const coatArea = paintableArea * coats;
+  const litres = coatArea / coverage;
+  const roundedLitres = Math.ceil(litres * 2) / 2;
+  const materialAmount = Math.round(roundedLitres * paintPrice);
+  const labourAmount = Math.round(paintableArea * labourRate);
+  return { grossArea, paintableArea, coatArea, litres, roundedLitres, materialAmount, labourAmount };
+}
+
 export default function QuoteBuilderPage() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -315,6 +334,17 @@ export default function QuoteBuilderPage() {
   const [jobDescription, setJobDescription] = useState("");
   const [terms, setTerms] = useState(defaultTerms);
   const [lineItems, setLineItems] = useState(defaultItems);
+  const [paintingMeasurements, setPaintingMeasurements] = useState({
+    width: "",
+    height: "",
+    surfaceCount: 1,
+    openingsArea: 0,
+    coats: 2,
+    coverage: 10,
+    labourRate: 18,
+    paintPrice: 24,
+  });
+  const [measurementStatus, setMeasurementStatus] = useState("");
   const [photos, setPhotos] = useState([]);
   const [photoStatus, setPhotoStatus] = useState("");
   const [savedPhotoUrls, setSavedPhotoUrls] = useState([]);
@@ -369,6 +399,7 @@ export default function QuoteBuilderPage() {
   const audioStreamRef = useRef(null);
 
   const totals = useMemo(() => calculateTotals(lineItems), [lineItems]);
+  const paintingEstimate = useMemo(() => calculatePaintingMeasurements(paintingMeasurements), [paintingMeasurements]);
   const q = (key) => translateQuoteLabel(quoteLanguage, key);
   const onboardingSteps = [
     {
@@ -689,6 +720,16 @@ export default function QuoteBuilderPage() {
         urgency,
         description: jobDescription,
         voice_note: voiceNote,
+        measurements:
+          tradeType === "Painting"
+            ? {
+                ...paintingMeasurements,
+                gross_area_sqm: Number(paintingEstimate.grossArea.toFixed(2)),
+                paintable_area_sqm: Number(paintingEstimate.paintableArea.toFixed(2)),
+                coat_area_sqm: Number(paintingEstimate.coatArea.toFixed(2)),
+                paint_litres: Number(paintingEstimate.roundedLitres.toFixed(2)),
+              }
+            : null,
         photo_count: photos.length + savedPhotoUrls.length,
         photo_names: [...photos.map((photo) => photo.name), ...savedPhotoUrls.map((photo) => photo.name)],
         line_items: lineItems.map((item) => ({
@@ -801,6 +842,42 @@ export default function QuoteBuilderPage() {
 
     const otherTradeTemplates = getTemplateDescriptionsForOtherTrades(nextTrade);
     setLineItems((items) => items.filter((item) => !otherTradeTemplates.has(item.description.trim().toLowerCase())));
+  }
+
+  function updatePaintingMeasurement(field, value) {
+    setPaintingMeasurements((measurements) => ({ ...measurements, [field]: value }));
+  }
+
+  function applyPaintingEstimate() {
+    if (tradeType !== "Painting") {
+      setMeasurementStatus("Select Painting before applying the paint estimate.");
+      return;
+    }
+
+    if (!paintingEstimate.paintableArea) {
+      setMeasurementStatus("Add wall width and height before applying a paint estimate.");
+      return;
+    }
+
+    const estimateItems = [
+      {
+        description: `Painting labour - ${paintingEstimate.paintableArea.toFixed(1)} sqm`,
+        type: "labour",
+        amount: paintingEstimate.labourAmount,
+      },
+      {
+        description: `Paint allowance - ${paintingEstimate.roundedLitres.toFixed(1)} L`,
+        type: "materials",
+        amount: paintingEstimate.materialAmount,
+      },
+    ];
+
+    setLineItems((items) => {
+      const blocked = new Set(["painting labour", "paint allowance"]);
+      const keptItems = items.filter((item) => ![...blocked].some((prefix) => item.description.trim().toLowerCase().startsWith(prefix)));
+      return [...keptItems, ...estimateItems.map((item) => ({ ...item, id: createId() }))];
+    });
+    setMeasurementStatus(`${paintingEstimate.paintableArea.toFixed(1)} sqm and ${paintingEstimate.roundedLitres.toFixed(1)} L paint estimate applied.`);
   }
 
   function addLineItem() {
@@ -2318,6 +2395,65 @@ export default function QuoteBuilderPage() {
               <img key={photo.url} src={photo.url} alt={photo.name} />
             ))}
           </div>
+
+          {tradeType === "Painting" ? (
+            <div className="measurement-panel">
+              <div className="section-heading compact">
+                <div>
+                  <p className="eyebrow">Measurements</p>
+                  <h2>Paint area</h2>
+                </div>
+                <button className="secondary-button" type="button" onClick={applyPaintingEstimate}>
+                  Apply estimate
+                </button>
+              </div>
+              <div className="measurement-grid">
+                <label>
+                  Width / length (m)
+                  <input value={paintingMeasurements.width} onChange={(event) => updatePaintingMeasurement("width", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Height (m)
+                  <input value={paintingMeasurements.height} onChange={(event) => updatePaintingMeasurement("height", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Walls/surfaces
+                  <input value={paintingMeasurements.surfaceCount} onChange={(event) => updatePaintingMeasurement("surfaceCount", event.target.value)} type="number" min="1" step="1" inputMode="numeric" />
+                </label>
+                <label>
+                  Doors/windows sqm
+                  <input value={paintingMeasurements.openingsArea} onChange={(event) => updatePaintingMeasurement("openingsArea", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Coats
+                  <input value={paintingMeasurements.coats} onChange={(event) => updatePaintingMeasurement("coats", event.target.value)} type="number" min="1" step="1" inputMode="numeric" />
+                </label>
+                <label>
+                  Coverage sqm/L
+                  <input value={paintingMeasurements.coverage} onChange={(event) => updatePaintingMeasurement("coverage", event.target.value)} type="number" min="1" step="0.5" inputMode="decimal" />
+                </label>
+              </div>
+              <div className="measurement-summary">
+                <div>
+                  <span>Paintable area</span>
+                  <strong>{paintingEstimate.paintableArea.toFixed(2)} sqm</strong>
+                </div>
+                <div>
+                  <span>Coat area</span>
+                  <strong>{paintingEstimate.coatArea.toFixed(2)} sqm</strong>
+                </div>
+                <div>
+                  <span>Paint required</span>
+                  <strong>{paintingEstimate.roundedLitres.toFixed(1)} L</strong>
+                </div>
+                <div>
+                  <span>Estimate</span>
+                  <strong>{currency.format(paintingEstimate.labourAmount + paintingEstimate.materialAmount)}</strong>
+                </div>
+              </div>
+              <span className="status-text">{measurementStatus || "Use confirmed measurements from text, voice, photo notes, or a diagram before final pricing."}</span>
+            </div>
+          ) : null}
 
           <div className="section-heading compact">
             <h2>Quote items</h2>

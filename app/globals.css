@@ -419,6 +419,7 @@ textarea:focus {
 .task-panel,
 .billing-panel,
 .feedback-panel,
+.measurement-panel,
 .data-panel,
 .auth-panel {
   border: 1px solid var(--line);
@@ -435,7 +436,8 @@ textarea:focus {
 .data-panel,
 .auth-panel,
 .billing-panel,
-.feedback-panel {
+.feedback-panel,
+.measurement-panel {
   display: grid;
   gap: 12px;
 }
@@ -813,6 +815,36 @@ textarea:focus {
   font-size: 0.84rem;
 }
 
+.measurement-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.measurement-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.measurement-summary div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.measurement-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.measurement-summary strong {
+  overflow-wrap: anywhere;
+}
+
 .assist-note {
   margin-bottom: 12px;
   color: var(--muted);
@@ -893,6 +925,8 @@ textarea:focus {
   .auth-actions,
   .status-actions,
   .billing-summary,
+  .measurement-grid,
+  .measurement-summary,
   .plan-grid,
   .feature-grid,
   .task-create-row,

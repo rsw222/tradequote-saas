@@ -22,6 +22,7 @@ function getCorpus(input) {
     input.site_address,
     input.description,
     input.voice_note,
+    input.measurements ? JSON.stringify(input.measurements) : "",
     ...(input.photo_names || []),
     ...(input.line_items || []).map((item) => `${item.description} ${item.type}`),
   ].join(" ");
@@ -55,11 +56,12 @@ function question(question, reason, priority = "normal") {
 
 function buildQuestions(input, matches) {
   const questions = [];
+  const hasMeasurementArea = Number(input.measurements?.paintable_area_sqm || 0) > 0;
   if (!input.site_address) questions.push(question("Confirm the site address and site access details.", "Site access can change labour time, parking, materials movement, and safety requirements.", "high"));
   if (!input.description) questions.push(question("Ask for a clearer description of the expected outcome.", "The quote needs a defined scope before materials and labour can be priced.", "high"));
   if (!input.voice_note) questions.push(question("Capture a short voice note from the site inspection.", "Voice notes preserve details that are easy to miss when quoting later."));
   if (!input.photo_count) questions.push(question("Upload photos of the work area, access path, and any visible damage.", "Photos improve scope confidence and reduce hidden-condition risk.", "high"));
-  if (!/\b(mm|cm|m|metre|meter|sqm|m2|length|width|height|size|measure)\b/i.test(getCorpus(input))) {
+  if (!hasMeasurementArea && !/\b(mm|cm|m|metre|meter|sqm|m2|length|width|height|size|measure)\b/i.test(getCorpus(input))) {
     questions.push(question("Confirm approximate measurements or dimensions.", "Materials and labour allowances are only rough until key measurements are known.", "high"));
   }
   if (!/\b(supply|install|repair|replace|remove|labour only|labor only)\b/i.test(getCorpus(input))) {
@@ -103,6 +105,33 @@ function buildQuoteSuggestions(input, matches) {
     });
   });
 
+  if (input.trade_type === "Painting" && Number(input.measurements?.paintable_area_sqm || 0) > 0) {
+    const area = Number(input.measurements.paintable_area_sqm);
+    const litres = Number(input.measurements.paint_litres || 0);
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: `Painting labour - ${area.toFixed(1)} sqm`,
+      item_type: "labour",
+      quantity: area,
+      unit: "sqm",
+      unit_price: 18,
+      amount: Math.round(area * 18),
+      confidence: 0.78,
+      reason: "Calculated from confirmed painting measurements supplied in the quote form.",
+    });
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: `Paint allowance - ${litres.toFixed(1)} L`,
+      item_type: "materials",
+      quantity: litres,
+      unit: "litre",
+      unit_price: 24,
+      amount: Math.round(litres * 24),
+      confidence: 0.74,
+      reason: "Calculated from paintable area, number of coats, and coverage rate.",
+    });
+  }
+
   if (!suggestions.some((item) => item.description.toLowerCase().includes("contingency"))) {
     suggestions.push({
       suggestion_type: "risk_allowance",
@@ -134,6 +163,17 @@ function buildMaterialSuggestions(input, matches) {
     Roofing: ["Flashing/sealant allowance", "Fixings", "Access and safety allowance"],
     Landscaping: ["Soil/mulch/turf allowance", "Delivery allowance", "Green waste removal"],
   };
+
+  if (input.trade_type === "Painting" && Number(input.measurements?.paint_litres || 0) > 0) {
+    materialSuggestions.push({
+      material_name: "Paint",
+      quantity: Number(input.measurements.paint_litres),
+      unit: "litre",
+      allowance_amount: Math.round(Number(input.measurements.paint_litres) * 24),
+      confidence: 0.78,
+      reason: "Calculated from paintable area, coats, and paint coverage.",
+    });
+  }
 
   (generic[input.trade_type] || ["Materials allowance", "Fixings and consumables", "Waste/disposal allowance"]).forEach((name, index) => {
     materialSuggestions.push({
@@ -169,6 +209,9 @@ function buildAssumptions(input, questions) {
   ];
   if (!input.photo_count) assumptions.push("No photos were available for visual scope confirmation.");
   if (!input.voice_note) assumptions.push("No voice/site note was available for inspection context.");
+  if (input.trade_type === "Painting" && Number(input.measurements?.paintable_area_sqm || 0) > 0) {
+    assumptions.push(`Painting estimate is based on ${Number(input.measurements.paintable_area_sqm).toFixed(1)} sqm paintable area and ${Number(input.measurements.paint_litres || 0).toFixed(1)} L paint allowance.`);
+  }
   if (questions.some((item) => item.priority === "high")) assumptions.push("High-priority missing information should be answered before sending a final quote.");
   return [...new Set(assumptions)];
 }
@@ -220,6 +263,7 @@ export async function POST(request) {
     urgency: limitText(body.urgency, "Standard"),
     description: limitText(body.description),
     voice_note: limitText(body.voice_note),
+    measurements: body.measurements && typeof body.measurements === "object" ? body.measurements : null,
     photo_count: Number(body.photo_count || 0),
     photo_names: Array.isArray(body.photo_names) ? body.photo_names.map((name) => limitText(name)).filter(Boolean).slice(0, 20) : [],
     line_items: Array.isArray(body.line_items) ? body.line_items.slice(0, 80) : [],
