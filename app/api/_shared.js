@@ -44,7 +44,7 @@ const freeEntitlements = {
   quote_limit_monthly: 5,
   user_limit: 1,
   includes_photos: true,
-  includes_voice: false,
+  includes_voice: true,
   includes_ai: false,
   includes_tasks: false,
   includes_team: false,
