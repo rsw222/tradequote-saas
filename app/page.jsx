@@ -295,6 +295,15 @@ function formatPlanPrice(plan) {
   return `${currency.format(Number(plan.monthly_price_cents || 0) / 100)}/mo`;
 }
 
+function getTemplateDescriptionsForOtherTrades(nextTrade) {
+  return new Set(
+    tradeKnowledge
+      .filter((entry) => !entry.trades.includes(nextTrade) && entry.trades.length <= 3)
+      .flatMap((entry) => entry.items || [])
+      .map((item) => item.description.trim().toLowerCase()),
+  );
+}
+
 export default function QuoteBuilderPage() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -768,16 +777,30 @@ export default function QuoteBuilderPage() {
   }
 
   function applySuggestedItems() {
-    const assistance = latestAssistance || runLocalAssistance(false);
-    setLineItems((items) => [
-      ...items,
-      ...assistance.suggestions.map((item) => ({
-        id: createId(),
-        description: item.description,
-        type: item.type,
-        amount: item.amount,
-      })),
-    ]);
+    const assistance = runLocalAssistance(false);
+    setLineItems((items) => {
+      const existing = new Set(items.map((item) => item.description.trim().toLowerCase()));
+      const nextItems = assistance.suggestions
+        .filter((item) => item.description && !existing.has(item.description.trim().toLowerCase()))
+        .map((item) => ({
+          id: createId(),
+          description: item.description,
+          type: item.type,
+          amount: item.amount,
+        }));
+      return [...items, ...nextItems];
+    });
+  }
+
+  function handleTradeChange(nextTrade) {
+    setTradeType(nextTrade);
+    setLatestAssistance(null);
+    setScopeCheckResult(null);
+    setAiOutput("");
+    setScopeCheckStatus(`Trade changed to ${nextTrade}. Re-run Scope check for trade-specific suggestions.`);
+
+    const otherTradeTemplates = getTemplateDescriptionsForOtherTrades(nextTrade);
+    setLineItems((items) => items.filter((item) => !otherTradeTemplates.has(item.description.trim().toLowerCase())));
   }
 
   function addLineItem() {
@@ -2228,7 +2251,7 @@ export default function QuoteBuilderPage() {
           <div className="field-pair">
             <label>
               Trade
-              <select value={tradeType} onChange={(event) => setTradeType(event.target.value)}>
+              <select value={tradeType} onChange={(event) => handleTradeChange(event.target.value)}>
                 {trades.map((trade) => (
                   <option key={trade}>{trade}</option>
                 ))}
