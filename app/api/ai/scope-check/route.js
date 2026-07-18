@@ -56,7 +56,7 @@ function question(question, reason, priority = "normal") {
 
 function buildQuestions(input, matches) {
   const questions = [];
-  const hasMeasurementArea = Number(input.measurements?.paintable_area_sqm || 0) > 0;
+  const hasMeasurementArea = Number(input.measurements?.paintable_area_sqm || input.measurements?.area_sqm || 0) > 0;
   if (!input.site_address) questions.push(question("Confirm the site address and site access details.", "Site access can change labour time, parking, materials movement, and safety requirements.", "high"));
   if (!input.description) questions.push(question("Ask for a clearer description of the expected outcome.", "The quote needs a defined scope before materials and labour can be priced.", "high"));
   if (!input.voice_note) questions.push(question("Capture a short voice note from the site inspection.", "Voice notes preserve details that are easy to miss when quoting later."));
@@ -132,6 +132,49 @@ function buildQuoteSuggestions(input, matches) {
     });
   }
 
+  if (input.trade_type === "Carpentry" && Number(input.measurements?.area_sqm || 0) > 0) {
+    const area = Number(input.measurements.area_sqm);
+    const materialArea = Number(input.measurements.material_area_sqm || area);
+    const materialAmount = Number(input.measurements.material_amount || Math.round(materialArea * 65));
+    const labourAmount = Number(input.measurements.labour_amount || Math.round(area * 55));
+    const trimAllowance = Number(input.measurements.trim_allowance || 0);
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: `Carpentry installation labour - ${area.toFixed(1)} sqm`,
+      item_type: "labour",
+      quantity: area,
+      unit: "sqm",
+      unit_price: 55,
+      amount: labourAmount,
+      confidence: 0.76,
+      reason: "Calculated from confirmed carpentry/flooring area supplied in the quote form.",
+    });
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: `Timber/flooring materials - ${materialArea.toFixed(1)} sqm incl. wastage`,
+      item_type: "materials",
+      quantity: materialArea,
+      unit: "sqm",
+      unit_price: materialArea ? Math.round(materialAmount / materialArea) : 65,
+      amount: materialAmount,
+      confidence: 0.72,
+      reason: "Calculated from area, wastage percentage, and material rate.",
+    });
+    if (trimAllowance > 0) {
+      suggestions.unshift({
+        suggestion_type: "quote_item",
+        description: "Trims, fixings, and consumables allowance",
+        item_type: "materials",
+        quantity: 1,
+        unit: "allowance",
+        unit_price: trimAllowance,
+        amount: trimAllowance,
+        confidence: 0.68,
+        reason: "Allowance from the carpentry measurement calculator.",
+      });
+    }
+  }
+
   if (!suggestions.some((item) => item.description.toLowerCase().includes("contingency"))) {
     suggestions.push({
       suggestion_type: "risk_allowance",
@@ -175,6 +218,27 @@ function buildMaterialSuggestions(input, matches) {
     });
   }
 
+  if (input.trade_type === "Carpentry" && Number(input.measurements?.material_area_sqm || 0) > 0) {
+    materialSuggestions.push({
+      material_name: "Timber/flooring/decking material",
+      quantity: Number(input.measurements.material_area_sqm),
+      unit: "sqm",
+      allowance_amount: Number(input.measurements.material_amount || 0),
+      confidence: 0.74,
+      reason: "Calculated from install area plus wastage.",
+    });
+    if (Number(input.measurements.trim_allowance || 0) > 0) {
+      materialSuggestions.push({
+        material_name: "Trims, fixings, and consumables",
+        quantity: 1,
+        unit: "allowance",
+        allowance_amount: Number(input.measurements.trim_allowance),
+        confidence: 0.68,
+        reason: "Allowance from the carpentry measurement calculator.",
+      });
+    }
+  }
+
   (generic[input.trade_type] || ["Materials allowance", "Fixings and consumables", "Waste/disposal allowance"]).forEach((name, index) => {
     materialSuggestions.push({
       material_name: name,
@@ -211,6 +275,9 @@ function buildAssumptions(input, questions) {
   if (!input.voice_note) assumptions.push("No voice/site note was available for inspection context.");
   if (input.trade_type === "Painting" && Number(input.measurements?.paintable_area_sqm || 0) > 0) {
     assumptions.push(`Painting estimate is based on ${Number(input.measurements.paintable_area_sqm).toFixed(1)} sqm paintable area and ${Number(input.measurements.paint_litres || 0).toFixed(1)} L paint allowance.`);
+  }
+  if (input.trade_type === "Carpentry" && Number(input.measurements?.area_sqm || 0) > 0) {
+    assumptions.push(`Carpentry estimate is based on ${Number(input.measurements.area_sqm).toFixed(1)} sqm install area and ${Number(input.measurements.material_area_sqm || 0).toFixed(1)} sqm material allowance including wastage.`);
   }
   if (questions.some((item) => item.priority === "high")) assumptions.push("High-priority missing information should be answered before sending a final quote.");
   return [...new Set(assumptions)];

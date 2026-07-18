@@ -323,6 +323,21 @@ function calculatePaintingMeasurements(measurements) {
   return { grossArea, paintableArea, coatArea, litres, roundedLitres, materialAmount, labourAmount };
 }
 
+function calculateCarpentryMeasurements(measurements) {
+  const length = Number(measurements.length || 0);
+  const width = Number(measurements.width || 0);
+  const wastagePercent = Math.max(0, Number(measurements.wastagePercent || 10));
+  const materialRate = Math.max(0, Number(measurements.materialRate || 65));
+  const labourRate = Math.max(0, Number(measurements.labourRate || 55));
+  const trimAllowance = Math.max(0, Number(measurements.trimAllowance || 120));
+  const area = length * width;
+  const materialArea = area * (1 + wastagePercent / 100);
+  const materialAmount = Math.round(materialArea * materialRate);
+  const labourAmount = Math.round(area * labourRate);
+  const totalAmount = materialAmount + labourAmount + trimAllowance;
+  return { area, materialArea, materialAmount, labourAmount, trimAllowance, totalAmount };
+}
+
 export default function QuoteBuilderPage() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -343,6 +358,14 @@ export default function QuoteBuilderPage() {
     coverage: 10,
     labourRate: 18,
     paintPrice: 24,
+  });
+  const [carpentryMeasurements, setCarpentryMeasurements] = useState({
+    length: "",
+    width: "",
+    wastagePercent: 10,
+    materialRate: 65,
+    labourRate: 55,
+    trimAllowance: 120,
   });
   const [measurementStatus, setMeasurementStatus] = useState("");
   const [photos, setPhotos] = useState([]);
@@ -400,6 +423,7 @@ export default function QuoteBuilderPage() {
 
   const totals = useMemo(() => calculateTotals(lineItems), [lineItems]);
   const paintingEstimate = useMemo(() => calculatePaintingMeasurements(paintingMeasurements), [paintingMeasurements]);
+  const carpentryEstimate = useMemo(() => calculateCarpentryMeasurements(carpentryMeasurements), [carpentryMeasurements]);
   const q = (key) => translateQuoteLabel(quoteLanguage, key);
   const onboardingSteps = [
     {
@@ -720,16 +744,7 @@ export default function QuoteBuilderPage() {
         urgency,
         description: jobDescription,
         voice_note: voiceNote,
-        measurements:
-          tradeType === "Painting"
-            ? {
-                ...paintingMeasurements,
-                gross_area_sqm: Number(paintingEstimate.grossArea.toFixed(2)),
-                paintable_area_sqm: Number(paintingEstimate.paintableArea.toFixed(2)),
-                coat_area_sqm: Number(paintingEstimate.coatArea.toFixed(2)),
-                paint_litres: Number(paintingEstimate.roundedLitres.toFixed(2)),
-              }
-            : null,
+        measurements: buildMeasurementPayload(),
         photo_count: photos.length + savedPhotoUrls.length,
         photo_names: [...photos.map((photo) => photo.name), ...savedPhotoUrls.map((photo) => photo.name)],
         line_items: lineItems.map((item) => ({
@@ -848,6 +863,37 @@ export default function QuoteBuilderPage() {
     setPaintingMeasurements((measurements) => ({ ...measurements, [field]: value }));
   }
 
+  function updateCarpentryMeasurement(field, value) {
+    setCarpentryMeasurements((measurements) => ({ ...measurements, [field]: value }));
+  }
+
+  function buildMeasurementPayload() {
+    if (tradeType === "Painting") {
+      return {
+        trade: "Painting",
+        ...paintingMeasurements,
+        gross_area_sqm: Number(paintingEstimate.grossArea.toFixed(2)),
+        paintable_area_sqm: Number(paintingEstimate.paintableArea.toFixed(2)),
+        coat_area_sqm: Number(paintingEstimate.coatArea.toFixed(2)),
+        paint_litres: Number(paintingEstimate.roundedLitres.toFixed(2)),
+      };
+    }
+
+    if (tradeType === "Carpentry") {
+      return {
+        trade: "Carpentry",
+        ...carpentryMeasurements,
+        area_sqm: Number(carpentryEstimate.area.toFixed(2)),
+        material_area_sqm: Number(carpentryEstimate.materialArea.toFixed(2)),
+        material_amount: carpentryEstimate.materialAmount,
+        labour_amount: carpentryEstimate.labourAmount,
+        trim_allowance: carpentryEstimate.trimAllowance,
+      };
+    }
+
+    return null;
+  }
+
   function applyPaintingEstimate() {
     if (tradeType !== "Painting") {
       setMeasurementStatus("Select Painting before applying the paint estimate.");
@@ -878,6 +924,43 @@ export default function QuoteBuilderPage() {
       return [...keptItems, ...estimateItems.map((item) => ({ ...item, id: createId() }))];
     });
     setMeasurementStatus(`${paintingEstimate.paintableArea.toFixed(1)} sqm and ${paintingEstimate.roundedLitres.toFixed(1)} L paint estimate applied.`);
+  }
+
+  function applyCarpentryEstimate() {
+    if (tradeType !== "Carpentry") {
+      setMeasurementStatus("Select Carpentry before applying the carpentry estimate.");
+      return;
+    }
+
+    if (!carpentryEstimate.area) {
+      setMeasurementStatus("Add length and width before applying a carpentry estimate.");
+      return;
+    }
+
+    const estimateItems = [
+      {
+        description: `Carpentry installation labour - ${carpentryEstimate.area.toFixed(1)} sqm`,
+        type: "labour",
+        amount: carpentryEstimate.labourAmount,
+      },
+      {
+        description: `Timber/flooring materials - ${carpentryEstimate.materialArea.toFixed(1)} sqm incl. wastage`,
+        type: "materials",
+        amount: carpentryEstimate.materialAmount,
+      },
+      {
+        description: "Trims, fixings, and consumables allowance",
+        type: "materials",
+        amount: carpentryEstimate.trimAllowance,
+      },
+    ];
+
+    setLineItems((items) => {
+      const blocked = new Set(["carpentry installation labour", "timber/flooring materials", "trims, fixings"]);
+      const keptItems = items.filter((item) => ![...blocked].some((prefix) => item.description.trim().toLowerCase().startsWith(prefix)));
+      return [...keptItems, ...estimateItems.map((item) => ({ ...item, id: createId() }))];
+    });
+    setMeasurementStatus(`${carpentryEstimate.area.toFixed(1)} sqm carpentry/flooring estimate applied.`);
   }
 
   function addLineItem() {
@@ -2452,6 +2535,65 @@ export default function QuoteBuilderPage() {
                 </div>
               </div>
               <span className="status-text">{measurementStatus || "Use confirmed measurements from text, voice, photo notes, or a diagram before final pricing."}</span>
+            </div>
+          ) : null}
+
+          {tradeType === "Carpentry" ? (
+            <div className="measurement-panel">
+              <div className="section-heading compact">
+                <div>
+                  <p className="eyebrow">Measurements</p>
+                  <h2>Carpentry area</h2>
+                </div>
+                <button className="secondary-button" type="button" onClick={applyCarpentryEstimate}>
+                  Apply estimate
+                </button>
+              </div>
+              <div className="measurement-grid">
+                <label>
+                  Length (m)
+                  <input value={carpentryMeasurements.length} onChange={(event) => updateCarpentryMeasurement("length", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Width (m)
+                  <input value={carpentryMeasurements.width} onChange={(event) => updateCarpentryMeasurement("width", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Wastage %
+                  <input value={carpentryMeasurements.wastagePercent} onChange={(event) => updateCarpentryMeasurement("wastagePercent", event.target.value)} type="number" min="0" step="1" inputMode="numeric" />
+                </label>
+                <label>
+                  Material $/sqm
+                  <input value={carpentryMeasurements.materialRate} onChange={(event) => updateCarpentryMeasurement("materialRate", event.target.value)} type="number" min="0" step="1" inputMode="decimal" />
+                </label>
+                <label>
+                  Labour $/sqm
+                  <input value={carpentryMeasurements.labourRate} onChange={(event) => updateCarpentryMeasurement("labourRate", event.target.value)} type="number" min="0" step="1" inputMode="decimal" />
+                </label>
+                <label>
+                  Trims/fixings $
+                  <input value={carpentryMeasurements.trimAllowance} onChange={(event) => updateCarpentryMeasurement("trimAllowance", event.target.value)} type="number" min="0" step="1" inputMode="decimal" />
+                </label>
+              </div>
+              <div className="measurement-summary">
+                <div>
+                  <span>Install area</span>
+                  <strong>{carpentryEstimate.area.toFixed(2)} sqm</strong>
+                </div>
+                <div>
+                  <span>Material area</span>
+                  <strong>{carpentryEstimate.materialArea.toFixed(2)} sqm</strong>
+                </div>
+                <div>
+                  <span>Materials</span>
+                  <strong>{currency.format(carpentryEstimate.materialAmount + carpentryEstimate.trimAllowance)}</strong>
+                </div>
+                <div>
+                  <span>Estimate</span>
+                  <strong>{currency.format(carpentryEstimate.totalAmount)}</strong>
+                </div>
+              </div>
+              <span className="status-text">{measurementStatus || "Use this for flooring, decking, wall lining, panels, and similar carpentry area estimates."}</span>
             </div>
           ) : null}
 
