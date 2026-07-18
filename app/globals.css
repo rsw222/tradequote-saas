@@ -769,6 +769,50 @@ textarea:focus {
   gap: 10px;
 }
 
+.button-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.scope-check-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.scope-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  background: #e7f6f3;
+  color: var(--accent-dark);
+  padding: 9px 10px;
+}
+
+.scope-score span,
+.scope-list span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.scope-list {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
+.scope-list strong {
+  font-size: 0.84rem;
+}
+
 .assist-note {
   margin-bottom: 12px;
   color: var(--muted);
@@ -845,6 +889,7 @@ textarea:focus {
   .field-pair,
   .media-row,
   .actions,
+  .button-pair,
   .auth-actions,
   .status-actions,
   .billing-summary,

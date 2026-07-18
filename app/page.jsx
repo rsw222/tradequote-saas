@@ -318,6 +318,8 @@ export default function QuoteBuilderPage() {
   const [generatedQuote, setGeneratedQuote] = useState("");
   const [aiOutput, setAiOutput] = useState("");
   const [latestAssistance, setLatestAssistance] = useState(null);
+  const [scopeCheckResult, setScopeCheckResult] = useState(null);
+  const [scopeCheckStatus, setScopeCheckStatus] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
   const [copyLabel, setCopyLabel] = useState("Copy quote");
   const [copyPromptLabel, setCopyPromptLabel] = useState("Copy AI prompt");
@@ -657,6 +659,67 @@ export default function QuoteBuilderPage() {
     } catch {
       // The local RAG output remains available if the backend is unavailable.
     }
+  }
+
+  async function runScopeCheck() {
+    if (!activeBusiness?.id) {
+      setScopeCheckStatus("Create or select a business before running AI Scope Check.");
+      return;
+    }
+
+    setScopeCheckStatus("Running AI Scope Check...");
+
+    try {
+      const data = await postJsonApi("/api/ai/scope-check", {
+        business_id: activeBusiness.id,
+        job_id: currentJobId,
+        quote_id: currentQuoteId,
+        client_name: clientName,
+        site_address: siteAddress,
+        trade_type: tradeType,
+        urgency,
+        description: jobDescription,
+        voice_note: voiceNote,
+        photo_count: photos.length + savedPhotoUrls.length,
+        photo_names: [...photos.map((photo) => photo.name), ...savedPhotoUrls.map((photo) => photo.name)],
+        line_items: lineItems.map((item) => ({
+          description: item.description,
+          type: item.type,
+          amount: Number(item.amount || 0),
+        })),
+      });
+      setScopeCheckResult(data);
+      setAiOutput(data.text || "");
+      setScopeCheckStatus(`AI Scope Check saved. Confidence ${Math.round(Number(data.confidence || 0) * 100)}%.`);
+    } catch (error) {
+      setScopeCheckStatus(error.message);
+    }
+  }
+
+  function applyScopeCheckItems() {
+    const suggestions = scopeCheckResult?.quote_suggestions || [];
+    if (!suggestions.length) {
+      setScopeCheckStatus("No AI quote items to apply yet.");
+      return;
+    }
+
+    const existing = new Set(lineItems.map((item) => item.description.trim().toLowerCase()));
+    const nextItems = suggestions
+      .filter((item) => item.description && !existing.has(item.description.trim().toLowerCase()))
+      .map((item) => ({
+        id: createId(),
+        description: item.description,
+        type: ["labour", "materials", "other"].includes(item.item_type) ? item.item_type : "other",
+        amount: Number(item.amount || item.unit_price || 0),
+      }));
+
+    if (!nextItems.length) {
+      setScopeCheckStatus("AI quote items are already in the quote.");
+      return;
+    }
+
+    setLineItems((items) => [...items, ...nextItems]);
+    setScopeCheckStatus(`${nextItems.length} AI quote item${nextItems.length === 1 ? "" : "s"} applied.`);
   }
 
   async function getAccessToken() {
@@ -2293,11 +2356,53 @@ export default function QuoteBuilderPage() {
                 <p className="eyebrow">RAG assistant</p>
                 <h2>AI quote check</h2>
               </div>
-              <button className="primary-button" type="button" onClick={runAiAssistance}>
-                Run AI
-              </button>
+              <div className="button-pair">
+                <button className="primary-button" type="button" onClick={runScopeCheck}>
+                  Scope check
+                </button>
+                <button className="secondary-button" type="button" onClick={runAiAssistance}>
+                  Prompt check
+                </button>
+              </div>
             </div>
             <p className="assist-note">Retrieves trade guidance, checks missing details, and drafts LLM-ready quote advice.</p>
+            {scopeCheckResult ? (
+              <div className="scope-check-panel">
+                <div className="scope-score">
+                  <span>Confidence</span>
+                  <strong>{Math.round(Number(scopeCheckResult.confidence || 0) * 100)}%</strong>
+                </div>
+                <div className="scope-list">
+                  <strong>Questions</strong>
+                  {(scopeCheckResult.questions || []).slice(0, 4).map((item) => (
+                    <span key={item.question}>{item.question}</span>
+                  ))}
+                </div>
+                <div className="scope-list">
+                  <strong>Materials</strong>
+                  {(scopeCheckResult.material_suggestions || []).slice(0, 4).map((item) => (
+                    <span key={item.material_name}>
+                      {item.material_name}
+                      {item.allowance_amount ? ` - ${currency.format(Number(item.allowance_amount))}` : ""}
+                    </span>
+                  ))}
+                </div>
+                <div className="scope-list">
+                  <strong>Risks</strong>
+                  {(scopeCheckResult.risks || []).slice(0, 4).map((risk) => (
+                    <span key={risk}>{risk}</span>
+                  ))}
+                </div>
+                <div className="actions">
+                  <button className="primary-button" type="button" onClick={applyScopeCheckItems}>
+                    Apply AI items
+                  </button>
+                  <button className="secondary-button" type="button" onClick={runScopeCheck}>
+                    Re-run check
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div className="context-list">
               {(latestAssistance?.matches || []).length ? (
                 latestAssistance.matches.map((match) => (
@@ -2321,6 +2426,7 @@ export default function QuoteBuilderPage() {
                 {copyPromptLabel}
               </button>
             </div>
+            <span className="status-text">{scopeCheckStatus || "Scope Check saves questions, materials, assumptions, and suggested quote items."}</span>
             <textarea className="ai-output" rows={12} readOnly value={aiOutput} placeholder="AI recommendations will appear here." />
           </div>
 
