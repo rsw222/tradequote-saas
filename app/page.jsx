@@ -338,6 +338,23 @@ function calculateCarpentryMeasurements(measurements) {
   return { area, materialArea, materialAmount, labourAmount, trimAllowance, totalAmount };
 }
 
+function calculateHvacMeasurements(measurements) {
+  const length = Number(measurements.length || 0);
+  const width = Number(measurements.width || 0);
+  const height = Number(measurements.height || 2.4);
+  const complexity = Math.max(0, Number(measurements.complexity || 1));
+  const installBase = Math.max(0, Number(measurements.installBase || 850));
+  const materialsAllowance = Math.max(0, Number(measurements.materialsAllowance || 320));
+  const volume = length * width * height;
+  const floorArea = length * width;
+  const rawCapacityKw = floorArea ? floorArea * 0.14 : 0;
+  const capacityKw = Math.ceil(rawCapacityKw * 10) / 10;
+  const installAmount = Math.round(installBase * complexity);
+  const commissioningAmount = 140;
+  const totalAmount = installAmount + materialsAllowance + commissioningAmount;
+  return { volume, floorArea, capacityKw, installAmount, materialsAllowance, commissioningAmount, totalAmount };
+}
+
 export default function QuoteBuilderPage() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -366,6 +383,14 @@ export default function QuoteBuilderPage() {
     materialRate: 65,
     labourRate: 55,
     trimAllowance: 120,
+  });
+  const [hvacMeasurements, setHvacMeasurements] = useState({
+    length: "",
+    width: "",
+    height: 2.4,
+    complexity: 1,
+    installBase: 850,
+    materialsAllowance: 320,
   });
   const [measurementStatus, setMeasurementStatus] = useState("");
   const [photos, setPhotos] = useState([]);
@@ -424,6 +449,7 @@ export default function QuoteBuilderPage() {
   const totals = useMemo(() => calculateTotals(lineItems), [lineItems]);
   const paintingEstimate = useMemo(() => calculatePaintingMeasurements(paintingMeasurements), [paintingMeasurements]);
   const carpentryEstimate = useMemo(() => calculateCarpentryMeasurements(carpentryMeasurements), [carpentryMeasurements]);
+  const hvacEstimate = useMemo(() => calculateHvacMeasurements(hvacMeasurements), [hvacMeasurements]);
   const q = (key) => translateQuoteLabel(quoteLanguage, key);
   const onboardingSteps = [
     {
@@ -867,6 +893,10 @@ export default function QuoteBuilderPage() {
     setCarpentryMeasurements((measurements) => ({ ...measurements, [field]: value }));
   }
 
+  function updateHvacMeasurement(field, value) {
+    setHvacMeasurements((measurements) => ({ ...measurements, [field]: value }));
+  }
+
   function buildMeasurementPayload() {
     if (tradeType === "Painting") {
       return {
@@ -888,6 +918,19 @@ export default function QuoteBuilderPage() {
         material_amount: carpentryEstimate.materialAmount,
         labour_amount: carpentryEstimate.labourAmount,
         trim_allowance: carpentryEstimate.trimAllowance,
+      };
+    }
+
+    if (tradeType === "HVAC") {
+      return {
+        trade: "HVAC",
+        ...hvacMeasurements,
+        floor_area_sqm: Number(hvacEstimate.floorArea.toFixed(2)),
+        room_volume_m3: Number(hvacEstimate.volume.toFixed(2)),
+        indicative_capacity_kw: Number(hvacEstimate.capacityKw.toFixed(1)),
+        install_amount: hvacEstimate.installAmount,
+        materials_allowance: hvacEstimate.materialsAllowance,
+        commissioning_amount: hvacEstimate.commissioningAmount,
       };
     }
 
@@ -961,6 +1004,43 @@ export default function QuoteBuilderPage() {
       return [...keptItems, ...estimateItems.map((item) => ({ ...item, id: createId() }))];
     });
     setMeasurementStatus(`${carpentryEstimate.area.toFixed(1)} sqm carpentry/flooring estimate applied.`);
+  }
+
+  function applyHvacEstimate() {
+    if (tradeType !== "HVAC") {
+      setMeasurementStatus("Select HVAC before applying the HVAC estimate.");
+      return;
+    }
+
+    if (!hvacEstimate.floorArea) {
+      setMeasurementStatus("Add room length and width before applying an HVAC estimate.");
+      return;
+    }
+
+    const estimateItems = [
+      {
+        description: `HVAC install labour - indicative ${hvacEstimate.capacityKw.toFixed(1)} kW room`,
+        type: "labour",
+        amount: hvacEstimate.installAmount,
+      },
+      {
+        description: "HVAC pipework, mounting, and consumables allowance",
+        type: "materials",
+        amount: hvacEstimate.materialsAllowance,
+      },
+      {
+        description: "HVAC commissioning and handover",
+        type: "labour",
+        amount: hvacEstimate.commissioningAmount,
+      },
+    ];
+
+    setLineItems((items) => {
+      const blocked = new Set(["hvac install labour", "hvac pipework", "hvac commissioning"]);
+      const keptItems = items.filter((item) => ![...blocked].some((prefix) => item.description.trim().toLowerCase().startsWith(prefix)));
+      return [...keptItems, ...estimateItems.map((item) => ({ ...item, id: createId() }))];
+    });
+    setMeasurementStatus(`${hvacEstimate.floorArea.toFixed(1)} sqm / ${hvacEstimate.volume.toFixed(1)} m3 HVAC estimate applied.`);
   }
 
   function addLineItem() {
@@ -2594,6 +2674,65 @@ export default function QuoteBuilderPage() {
                 </div>
               </div>
               <span className="status-text">{measurementStatus || "Use this for flooring, decking, wall lining, panels, and similar carpentry area estimates."}</span>
+            </div>
+          ) : null}
+
+          {tradeType === "HVAC" ? (
+            <div className="measurement-panel">
+              <div className="section-heading compact">
+                <div>
+                  <p className="eyebrow">Measurements</p>
+                  <h2>HVAC room sizing</h2>
+                </div>
+                <button className="secondary-button" type="button" onClick={applyHvacEstimate}>
+                  Apply estimate
+                </button>
+              </div>
+              <div className="measurement-grid">
+                <label>
+                  Room length (m)
+                  <input value={hvacMeasurements.length} onChange={(event) => updateHvacMeasurement("length", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Room width (m)
+                  <input value={hvacMeasurements.width} onChange={(event) => updateHvacMeasurement("width", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Ceiling height (m)
+                  <input value={hvacMeasurements.height} onChange={(event) => updateHvacMeasurement("height", event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Complexity factor
+                  <input value={hvacMeasurements.complexity} onChange={(event) => updateHvacMeasurement("complexity", event.target.value)} type="number" min="0.8" step="0.1" inputMode="decimal" />
+                </label>
+                <label>
+                  Install base $
+                  <input value={hvacMeasurements.installBase} onChange={(event) => updateHvacMeasurement("installBase", event.target.value)} type="number" min="0" step="10" inputMode="decimal" />
+                </label>
+                <label>
+                  Materials $
+                  <input value={hvacMeasurements.materialsAllowance} onChange={(event) => updateHvacMeasurement("materialsAllowance", event.target.value)} type="number" min="0" step="10" inputMode="decimal" />
+                </label>
+              </div>
+              <div className="measurement-summary">
+                <div>
+                  <span>Floor area</span>
+                  <strong>{hvacEstimate.floorArea.toFixed(2)} sqm</strong>
+                </div>
+                <div>
+                  <span>Room volume</span>
+                  <strong>{hvacEstimate.volume.toFixed(2)} m3</strong>
+                </div>
+                <div>
+                  <span>Indicative capacity</span>
+                  <strong>{hvacEstimate.capacityKw.toFixed(1)} kW</strong>
+                </div>
+                <div>
+                  <span>Estimate</span>
+                  <strong>{currency.format(hvacEstimate.totalAmount)}</strong>
+                </div>
+              </div>
+              <span className="status-text">{measurementStatus || "Indicative HVAC sizing only. Confirm heat load, insulation, windows, orientation, and unit selection before final pricing."}</span>
             </div>
           ) : null}
 

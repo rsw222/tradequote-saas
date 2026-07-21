@@ -56,7 +56,7 @@ function question(question, reason, priority = "normal") {
 
 function buildQuestions(input, matches) {
   const questions = [];
-  const hasMeasurementArea = Number(input.measurements?.paintable_area_sqm || input.measurements?.area_sqm || 0) > 0;
+  const hasMeasurementArea = Number(input.measurements?.paintable_area_sqm || input.measurements?.area_sqm || input.measurements?.floor_area_sqm || 0) > 0;
   if (!input.site_address) questions.push(question("Confirm the site address and site access details.", "Site access can change labour time, parking, materials movement, and safety requirements.", "high"));
   if (!input.description) questions.push(question("Ask for a clearer description of the expected outcome.", "The quote needs a defined scope before materials and labour can be priced.", "high"));
   if (!input.voice_note) questions.push(question("Capture a short voice note from the site inspection.", "Voice notes preserve details that are easy to miss when quoting later."));
@@ -175,6 +175,46 @@ function buildQuoteSuggestions(input, matches) {
     }
   }
 
+  if (input.trade_type === "HVAC" && Number(input.measurements?.floor_area_sqm || 0) > 0) {
+    const capacityKw = Number(input.measurements.indicative_capacity_kw || 0);
+    const installAmount = Number(input.measurements.install_amount || 850);
+    const materialsAllowance = Number(input.measurements.materials_allowance || 320);
+    const commissioningAmount = Number(input.measurements.commissioning_amount || 140);
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: `HVAC install labour - indicative ${capacityKw.toFixed(1)} kW room`,
+      item_type: "labour",
+      quantity: 1,
+      unit: "allowance",
+      unit_price: installAmount,
+      amount: installAmount,
+      confidence: 0.62,
+      reason: "Calculated from room floor area and install complexity. Confirm heat load and unit selection before final pricing.",
+    });
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: "HVAC pipework, mounting, and consumables allowance",
+      item_type: "materials",
+      quantity: 1,
+      unit: "allowance",
+      unit_price: materialsAllowance,
+      amount: materialsAllowance,
+      confidence: 0.6,
+      reason: "Allowance from HVAC room sizing calculator.",
+    });
+    suggestions.unshift({
+      suggestion_type: "quote_item",
+      description: "HVAC commissioning and handover",
+      item_type: "labour",
+      quantity: 1,
+      unit: "allowance",
+      unit_price: commissioningAmount,
+      amount: commissioningAmount,
+      confidence: 0.66,
+      reason: "Standard commissioning allowance after installation.",
+    });
+  }
+
   if (!suggestions.some((item) => item.description.toLowerCase().includes("contingency"))) {
     suggestions.push({
       suggestion_type: "risk_allowance",
@@ -239,6 +279,25 @@ function buildMaterialSuggestions(input, matches) {
     }
   }
 
+  if (input.trade_type === "HVAC" && Number(input.measurements?.floor_area_sqm || 0) > 0) {
+    materialSuggestions.push({
+      material_name: "Indicative HVAC capacity",
+      quantity: Number(input.measurements.indicative_capacity_kw || 0),
+      unit: "kW",
+      allowance_amount: null,
+      confidence: 0.58,
+      reason: "Indicative sizing from room area. Confirm heat load, insulation, glazing, orientation, and equipment selection.",
+    });
+    materialSuggestions.push({
+      material_name: "Pipework, mounting, and consumables",
+      quantity: 1,
+      unit: "allowance",
+      allowance_amount: Number(input.measurements.materials_allowance || 0),
+      confidence: 0.62,
+      reason: "Allowance from HVAC room sizing calculator.",
+    });
+  }
+
   (generic[input.trade_type] || ["Materials allowance", "Fixings and consumables", "Waste/disposal allowance"]).forEach((name, index) => {
     materialSuggestions.push({
       material_name: name,
@@ -278,6 +337,10 @@ function buildAssumptions(input, questions) {
   }
   if (input.trade_type === "Carpentry" && Number(input.measurements?.area_sqm || 0) > 0) {
     assumptions.push(`Carpentry estimate is based on ${Number(input.measurements.area_sqm).toFixed(1)} sqm install area and ${Number(input.measurements.material_area_sqm || 0).toFixed(1)} sqm material allowance including wastage.`);
+  }
+  if (input.trade_type === "HVAC" && Number(input.measurements?.floor_area_sqm || 0) > 0) {
+    assumptions.push(`HVAC estimate is based on ${Number(input.measurements.floor_area_sqm).toFixed(1)} sqm / ${Number(input.measurements.room_volume_m3 || 0).toFixed(1)} m3 room size and indicative ${Number(input.measurements.indicative_capacity_kw || 0).toFixed(1)} kW guidance.`);
+    assumptions.push("HVAC capacity is indicative only and should be confirmed against insulation, glazing, aspect, climate, heat load, and selected unit specifications.");
   }
   if (questions.some((item) => item.priority === "high")) assumptions.push("High-priority missing information should be answered before sending a final quote.");
   return [...new Set(assumptions)];
